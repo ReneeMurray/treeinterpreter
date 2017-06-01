@@ -55,6 +55,7 @@ def _predict_tree(model, X, joint_contribution=False):
     # reshape if squeezed into a single float
     if len(values.shape) == 0:
         values = np.array([values])
+
     if type(model) == DecisionTreeRegressor:
         biases = np.full(X.shape[0], values[paths[0][0]])
         line_shape = X.shape[1]
@@ -66,9 +67,10 @@ def _predict_tree(model, X, joint_contribution=False):
 
         biases = np.tile(values[paths[0][0]], (X.shape[0], 1))
         line_shape = (X.shape[1], model.n_classes_)
+    else:
+        raise ValueError('Invalid Model')
     direct_prediction = values[leaves]
-    
-    
+
     #make into python list, accessing values will be faster
     values_list = list(values)
     feature_index = list(model.tree_.feature)
@@ -77,8 +79,7 @@ def _predict_tree(model, X, joint_contribution=False):
     if joint_contribution:
         for row, leaf in enumerate(leaves):
             path = leaf_to_path[leaf]
-            
-            
+
             path_features = set()
             contributions.append({})
             for i in range(len(path) - 1):
@@ -89,23 +90,42 @@ def _predict_tree(model, X, joint_contribution=False):
                 contributions[row][tuple(sorted(path_features))] = \
                     contributions[row].get(tuple(sorted(path_features)), 0) + contrib
         return direct_prediction, biases, contributions
-        
-    else:
 
-        for row, leaf in enumerate(leaves):
-            for path in paths:
-                if leaf == path[-1]:
-                    break
-            
-            contribs = np.zeros(line_shape)
-            for i in range(len(path) - 1):
-                
-                contrib = values_list[path[i+1]] - \
-                         values_list[path[i]]
-                contribs[feature_index[path[i]]] += contrib
-            contributions.append(contribs)
-    
-        return direct_prediction, biases, np.array(contributions)
+    return direct_prediction, biases, _do_predict_tree(
+        leaves,
+        paths,
+        line_shape,
+        values_list,
+        feature_index
+    )
+
+
+def _path_of_leaf(paths, leaf):
+    for path in paths:
+        if leaf == path[-1]:
+            return path
+    return None
+
+
+def _do_predict_tree(
+        leaves,
+        paths,
+        line_shape,
+        values_list,
+        feature_index
+):
+    contributions = []
+    for row, leaf in enumerate(leaves):
+        path = _path_of_leaf(paths, leaf)
+
+        contribs = np.zeros(line_shape)
+        for i in range(len(path) - 1):
+            contrib = values_list[path[i+1]] - \
+                     values_list[path[i]]
+            contribs[feature_index[path[i]]] += contrib
+        contributions.append(contribs)
+
+    return np.array(contributions)
 
 
 def _predict_forest(model, X, joint_contribution=False):
@@ -118,16 +138,13 @@ def _predict_forest(model, X, joint_contribution=False):
     contributions = []
     predictions = []
 
-    
     if joint_contribution:
-        
         for tree in model.estimators_:
             pred, bias, contribution = _predict_tree(tree, X, joint_contribution=joint_contribution)
 
             biases.append(bias)
             contributions.append(contribution)
             predictions.append(pred)
-        
         
         total_contributions = []
         
@@ -142,9 +159,7 @@ def _predict_forest(model, X, joint_contribution=False):
         for i, item in enumerate(contribution):
             total_contributions[i]
             sm = sum([v for v in contribution[i].values()])
-                
 
-        
         return (np.mean(predictions, axis=0), np.mean(biases, axis=0),
             total_contributions)
     else:
@@ -154,10 +169,12 @@ def _predict_forest(model, X, joint_contribution=False):
             biases.append(bias)
             contributions.append(contribution)
             predictions.append(pred)
-        
-        
-        return (np.mean(predictions, axis=0), np.mean(biases, axis=0),
-            np.mean(contributions, axis=0))
+
+        return (
+            np.mean(predictions, axis=0),
+            np.mean(biases, axis=0),
+            np.mean(contributions, axis=0)
+        )
 
 
 def predict(model, X, joint_contribution=False):
