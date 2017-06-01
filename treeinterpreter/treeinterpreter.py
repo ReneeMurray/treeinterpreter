@@ -93,30 +93,23 @@ def _predict_tree(model, X, joint_contribution=False):
 
     return direct_prediction, biases, _do_predict_tree(
         leaves,
-        paths,
+        leaf_to_path,
         line_shape,
         values_list,
         feature_index
     )
 
 
-def _path_of_leaf(paths, leaf):
-    for path in paths:
-        if leaf == path[-1]:
-            return path
-    return None
-
-
 def _do_predict_tree(
         leaves,
-        paths,
+        leaf_to_path: dict,
         line_shape,
         values_list,
         feature_index
 ):
     contributions = []
     for row, leaf in enumerate(leaves):
-        path = _path_of_leaf(paths, leaf)
+        path = leaf_to_path[leaf]
 
         contribs = np.zeros(line_shape)
         for i in range(len(path) - 1):
